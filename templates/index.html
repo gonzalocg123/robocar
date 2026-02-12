@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Robocar RP5 Control</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;600&display=swap');
+
+    :root {
+      --primary: #00f2fe;
+      --primary-glow: rgba(0, 242, 254, .5);
+      --secondary: #4facfe;
+      --bg-dark: #050505;
+      --panel-bg: rgba(20, 20, 30, .7);
+      --text-main: #e2e8f0;
+      --text-muted: #94a3b8;
+      --accent-red: #ff3b30;
+      --success: #34d399;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    body {
+      margin: 0;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      background-color: var(--bg-dark);
+      background-image:
+        radial-gradient(circle at 10% 20%, rgba(79, 172, 254, .1) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(0, 242, 254, .1) 0%, transparent 40%);
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: .75rem 1.5rem;
+      background: rgba(10, 10, 15, .8);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, .1);
+      z-index: 20;
+    }
+
+    .brand {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      background: linear-gradient(to right, var(--secondary), var(--primary));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 20px var(--primary-glow);
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+      box-shadow: 0 0 10px #ef4444;
+      transition: .3s;
+    }
+
+    .status-dot.connected {
+      background: var(--success);
+      box-shadow: 0 0 10px var(--success);
+    }
+
+    .main-layout {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .camera-section {
+      position: relative;
+      width: 100%;
+      height: 40vh;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      border-bottom: 1px solid rgba(255, 255, 255, .05);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+    }
+
+    .camera-feed {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .camera-overlay {
+      position: absolute;
+      top: 1rem;
+      left: 1rem;
+      right: 1rem;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .hud-badge {
+      padding: .35rem .75rem;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, .6);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255, 255, 255, .1);
+      font-family: 'Orbitron', monospace;
+      font-size: .7rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .rec-indicator {
+      color: var(--accent-red);
+      display: none;
+      align-items: center;
+      gap: .4rem;
+    }
+
+    .rec-indicator.active {
+      display: flex;
+    }
+
+    .rec-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent-red);
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        opacity: 1;
+        transform: scale(1)
+      }
+
+      50% {
+        opacity: .5;
+        transform: scale(.8)
+      }
+
+      100% {
+        opacity: 1;
+        transform: scale(1)
+      }
+    }
+
+    .controls-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+      gap: 1rem;
+      min-height: 0;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+    }
+
+    .stat-card {
+      background: var(--panel-bg);
+      border: 1px solid rgba(255, 255, 255, .05);
+      border-radius: 12px;
+      padding: .75rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
+      opacity: .5;
+    }
+
+    .stat-label {
+      font-size: .7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: .25rem;
+    }
+
+    .stat-value {
+      font-family: 'Orbitron', monospace;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .joystick-container {
+      flex: 1;
+      min-height: 220px;
+      background: rgba(255, 255, 255, .02);
+      border: 1px solid rgba(255, 255, 255, .05);
+      border-radius: 16px;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .joystick-label {
+      position: absolute;
+      bottom: 1rem;
+      font-size: .7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      opacity: .5;
+      pointer-events: none;
+    }
+
+    .action-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: auto;
+    }
+
+    .btn {
+      padding: 1rem;
+      border: none;
+      border-radius: 12px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      font-size: .9rem;
+      cursor: pointer;
+      transition: .2s cubic-bezier(.4, 0, .2, 1);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .btn:active {
+      transform: scale(.98);
+    }
+
+    .btn-mode {
+      background: rgba(30, 41, 59, .8);
+      color: var(--primary);
+      border: 1px solid var(--primary);
+      box-shadow: 0 0 15px rgba(0, 242, 254, .1);
+    }
+
+    .btn-mode.auto {
+      background: var(--success);
+      color: #000;
+      border-color: var(--success);
+      box-shadow: 0 0 20px rgba(52, 211, 153, .4);
+    }
+
+    .btn-record {
+      background: rgba(30, 41, 59, .8);
+      color: var(--accent-red);
+      border: 1px solid var(--accent-red);
+      box-shadow: 0 0 15px rgba(255, 59, 48, .1);
+    }
+
+    .btn-record.active {
+      background: var(--accent-red);
+      color: #fff;
+      box-shadow: 0 0 20px rgba(255, 59, 48, .4);
+    }
+
+    @media (orientation: landscape) and (max-height: 600px) {
+      .main-layout {
+        flex-direction: row;
+      }
+
+      .camera-section {
+        width: 50%;
+        height: 100vh;
+        border-bottom: none;
+        border-right: 1px solid rgba(255, 255, 255, .1);
+      }
+
+      .controls-section {
+        width: 50%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <div class="brand">ROBOCAR RP5</div>
+    <div class="connection-status">
+      <div id="conn-dot" class="status-dot"></div>
+      <span id="conn-text">DISCONNECTED</span>
+    </div>
+  </div>
+
+  <div class="main-layout">
+    <div class="camera-section">
+      <img src="/video_feed" alt="Live Feed" class="camera-feed" />
+      <div class="camera-overlay">
+        <div class="hud-badge rec-indicator" id="rec-status">
+          <div class="rec-dot"></div>REC
+        </div>
+        <div class="hud-badge" id="mode-status">MANUAL</div>
+      </div>
+    </div>
+
+    <div class="controls-section">
+      <div class="dashboard">
+        <div class="stat-card">
+          <div class="stat-label">Throttle</div>
+          <div class="stat-value" id="throttle-val">0%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Steering</div>
+          <div class="stat-value" id="steering-val">0.00</div>
+        </div>
+      </div>
+
+      <div class="joystick-container">
+        <div id="nipple-container" style="width:100%; height:100%; position:absolute;"></div>
+        <div class="joystick-label">JOYSTICK</div>
+      </div>
+
+      <div class="action-bar">
+        <button id="btn-mode" class="btn btn-mode">AUTO MODE</button>
+        <button id="btn-record" class="btn btn-record">REC</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let state = { steering: 0, throttle: 0, mode: 'manual', recording: false, lastSentTime: 0 };
+    const UPDATE_INTERVAL = 30;
+
+    function updateUI() {
+      document.getElementById('throttle-val').textContent = Math.round(state.throttle * 100) + '%';
+      document.getElementById('steering-val').textContent = state.steering.toFixed(2);
+      document.getElementById('conn-dot').classList.add('connected');
+      document.getElementById('conn-text').textContent = "ONLINE";
+    }
+
+    async function sendControl() {
+      const now = Date.now();
+      if (now - state.lastSentTime < UPDATE_INTERVAL) return;
+      try {
+        await fetch('/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ throttle: state.throttle, steering: state.steering })
+        });
+        state.lastSentTime = now;
+        updateUI();
+      } catch (e) {
+        console.error(e);
+        document.getElementById('conn-dot').classList.remove('connected');
+        document.getElementById('conn-text').textContent = "OFFLINE";
+      }
+    }
+
+    async function sendCommand(url, body = {}) {
+      try {
+        await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      } catch (e) { console.error(e); }
+    }
+
+    function initJoystick() {
+      const zone = document.getElementById('nipple-container');
+      if (!zone.clientWidth) return;
+
+      const joy = nipplejs.create({
+        zone,
+        mode: 'static',
+        position: { left: '50%', top: '50%' }, // joystick fijo en el centro del panel
+        color: '#00f2fe',
+        size: 150,
+        restOpacity: 0.65,
+        threshold: 0.08
+      });
+
+      // ===== TUNING (Pass-through to backend) =====
+      const MAX_DIST = 75;        // joystick radius (size 150 / 2)
+      const DEADZONE = 0.02;      // small local deadzone
+
+      const THROTTLE_MAX = 1.0;   // Send full range
+      const STEER_MAX = 1.0;      // Send full range
+
+      const THROTTLE_EXPO = 1.0;  // Backend handles curves
+      const STEER_EXPO = 1.0;     // Backend handles curves
+
+      const SMOOTH = 1.0;         // No frontend smoothing (reduces lag)
+
+      function clamp(v, a = -1, b = 1) { return Math.max(a, Math.min(b, v)); }
+      function sgn(v) { return v >= 0 ? 1 : -1; }
+      function expo(v, p) { return sgn(v) * Math.pow(Math.abs(v), p); }
+      function dz(v) { return Math.abs(v) < DEADZONE ? 0 : v; }
+      function smooth(prev, next) { return prev + (next - prev) * SMOOTH; }
+
+      joy.on('move', (evt, data) => {
+        const ang = data.angle ? data.angle.radian : 0;
+        const dist = Math.min(data.distance || 0, MAX_DIST) / MAX_DIST;
+
+        // Nipple: x = cos, y = sin (positivo hacia abajo). Queremos arriba=adelante => invertir y.
+        let x = Math.cos(ang) * dist;
+        let y = -Math.sin(ang) * dist;
+
+        x = dz(x); y = dz(y);
+
+        // Curvas + límites
+        x = expo(x, STEER_EXPO) * STEER_MAX;
+        y = expo(y, THROTTLE_EXPO) * THROTTLE_MAX;
+
+        x = clamp(x); y = clamp(y);
+
+        state.steering = smooth(state.steering, x);
+        state.throttle = smooth(state.throttle, y);
+
+        sendControl();
+      });
+
+      joy.on('end', () => {
+        state.steering = 0;
+        state.throttle = 0;
+        sendControl();
+        updateUI();
+      });
+    }
+
+    document.getElementById('btn-mode').addEventListener('click', async () => {
+      state.mode = state.mode === 'manual' ? 'autonomous' : 'manual';
+      const btn = document.getElementById('btn-mode');
+      const badge = document.getElementById('mode-status');
+
+      if (state.mode === 'autonomous') {
+        btn.textContent = 'MANUAL MODE';
+        btn.classList.add('auto');
+        badge.textContent = 'AUTONOMOUS';
+        badge.style.border = '1px solid var(--success)';
+        badge.style.color = 'var(--success)';
+      } else {
+        btn.textContent = 'AUTO MODE';
+        btn.classList.remove('auto');
+        badge.textContent = 'MANUAL';
+        badge.style.border = '1px solid rgba(255,255,255,0.1)';
+        badge.style.color = '#fff';
+      }
+      await sendCommand('/set_mode', { mode: state.mode });
+    });
+
+    document.getElementById('btn-record').addEventListener('click', async () => {
+      state.recording = !state.recording;
+      const btn = document.getElementById('btn-record');
+      const badge = document.getElementById('rec-status');
+
+      if (state.recording) {
+        btn.textContent = 'STOP REC';
+        btn.classList.add('active');
+        badge.classList.add('active');
+      } else {
+        btn.textContent = 'REC';
+        btn.classList.remove('active');
+        badge.classList.remove('active');
+      }
+      await sendCommand('/toggle_recording');
+    });
+
+    window.onload = () => setTimeout(initJoystick, 100);
+  </script>
+</body>
+
+</html>
