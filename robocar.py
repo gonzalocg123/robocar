@@ -91,72 +91,22 @@ CONTROL_TIMEOUT_S = _env_float("CONTROL_TIMEOUT_S", 0.60)
 THROTTLE_DEADZONE = _env_float("THROTTLE_DEADZONE", 0.05)
 STEERING_DEADZONE = _env_float("STEERING_DEADZONE", 0.01)
 
-# "Feel" tuning (important)
-STEER_WHEN_MOVING_REF = _env_float("STEER_WHEN_MOVING_REF", 0.20)
-
-MAX_STEER = _env_float("MAX_STEER", 0.70)                # hard cap on steering effect
-STEER_AT_LOW_SPEED = _env_float("STEER_AT_LOW_SPEED", 0.95)
-STEER_AT_HIGH_SPEED = _env_float("STEER_AT_HIGH_SPEED", 0.80)
-
-# Precision curves (Exponential)
-# 1.0 = linear, 2.0 = quadratic (more precision at low stick), 3.0 = cubic
-STEERING_EXPONENT = _env_float("STEERING_EXPONENT", 2.0)
-THROTTLE_EXPONENT = _env_float("THROTTLE_EXPONENT", 2.0)
-
 # Control polarity (1.0 = normal, -1.0 = inverted)
 # User requested inversion, so defaulting to -1.0
 THROTTLE_POLARITY = _env_float("THROTTLE_POLARITY", -1.0)
 STEERING_POLARITY = _env_float("STEERING_POLARITY", 1.0)
 
-# Pivot turn (optional)
-ALLOW_PIVOT_TURN = os.getenv("ALLOW_PIVOT_TURN", "1") not in ("0", "false", "False")
-PIVOT_STEER_THRESHOLD = _env_float("PIVOT_STEER_THRESHOLD", 0.20)
-PIVOT_POWER = _env_float("PIVOT_POWER", 0.28)
-
-# Motor stiction compensation (very important with L298N)
-MIN_PWM = _env_float("MIN_PWM", 0.14)
-
 # Autonomous
 MODEL_PATH = os.getenv("MODEL_PATH", os.path.join("models", "model.tflite"))
-AUTO_THROTTLE = _env_float("AUTO_THROTTLE", 0.25)
+AUTO_THROTTLE = _env_float("AUTO_THROTTLE", 0.40)  # Increased for more power
 AUTO_STEER_SMOOTH = _env_float("AUTO_STEER_SMOOTH", 0.30)
-
-# Manual smoothing (EMA) — lower => smoother
-MANUAL_STEER_SMOOTH = _env_float("MANUAL_STEER_SMOOTH", 0.30)  # Increased for snappier response
-MANUAL_THROTTLE_SMOOTH = _env_float("MANUAL_THROTTLE_SMOOTH", 0.30)
 
 # Data root
 DATA_ROOT = os.getenv("DATA_DIR", "data")
 
-# Debug
-DEBUG_DRIVE = os.getenv("DEBUG_DRIVE", "0") in ("1", "true", "True")
-
 
 def _clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
-
-
-def _apply_deadzone(x: float, dz: float) -> float:
-    return 0.0 if abs(x) < dz else x
-
-
-def _apply_exponential(x: float, exp: float) -> float:
-    return math.copysign(abs(x) ** exp, x)
-
-
-def _apply_min_pwm(sp: float, min_pwm: float) -> float:
-    """Overcome stiction without killing differential steering.
-    Only bump when the commanded wheel speed is small-but-nontrivial.
-    """
-    if min_pwm <= 0:
-        return sp
-    if sp == 0.0:
-        return 0.0
-    a = abs(sp)
-    # do NOT bump tiny corrections; only bump if wheel is meant to actually move
-    if 0.0 < a < min_pwm:
-        return (min_pwm if sp > 0 else -min_pwm)
-    return sp
 
 
 # -----------------------------
@@ -262,63 +212,32 @@ class MotorController:
         _apply(self._right_in3, self._right_in4, self._right_en, right_speed) # type: ignore
 
     def drive(self, throttle: float, steering: float, speed_limit: float) -> None:
-        # Polarity inversion (based on user request)
-        throttle *= THROTTLE_POLARITY
-        steering *= STEERING_POLARITY
-
-        throttle = _apply_deadzone(_clamp(throttle, -1.0, 1.0), THROTTLE_DEADZONE)
-        steering = _apply_deadzone(_clamp(steering, -1.0, 1.0), STEERING_DEADZONE)
-
-        # Apply exponential curve for precision
-        throttle = _apply_exponential(throttle, THROTTLE_EXPONENT)
-        steering = _apply_exponential(steering, STEERING_EXPONENT)
-
+        throttle = _clamp(throttle * THROTTLE_POLARITY, -1.0, 1.0)
+        steering = _clamp(steering * STEERING_POLARITY, -1.0, 1.0)
         speed_limit = _clamp(speed_limit, 0.0, 1.0)
 
-        # Gentle steering cap (key to avoid "brusco")
-        steering = _clamp(steering, -MAX_STEER, MAX_STEER)
+        if abs(throttle) < THROTTLE_DEADZONE:
+            throttle = 0.0
+        if abs(steering) < STEERING_DEADZONE:
+            steering = 0.0
 
-        # Pivot turn (optional)
-        if throttle == 0.0:
-            if ALLOW_PIVOT_TURN and abs(steering) >= PIVOT_STEER_THRESHOLD:
-                # scale pivot power with steering magnitude
-                p = _clamp(PIVOT_POWER * (abs(steering) / max(MAX_STEER, 1e-6)), 0.0, 1.0)
-                left = p if steering > 0 else -p
-                right = -left
-                left = _apply_min_pwm(left * speed_limit, MIN_PWM)
-                right = _apply_min_pwm(right * speed_limit, MIN_PWM)
-                if DEBUG_DRIVE:
-                    print(f"[pivot] steer={steering:.2f} -> L={left:.2f} R={right:.2f}")
-                self.set_motors(left, right)
-                return
-
+        if throttle == 0.0 and steering == 0.0:
             self.set_motors(0.0, 0.0)
             return
 
-        # Progressive steering with speed (but still usable)
-        moving = min(1.0, abs(throttle) / max(STEER_WHEN_MOVING_REF, 1e-6))
-        scale = STEER_AT_LOW_SPEED + (STEER_AT_HIGH_SPEED - STEER_AT_LOW_SPEED) * moving
-        steering = steering * _clamp(scale, 0.2, 1.0)
-
+        # Direct arcade steering for max power and responsiveness
         left = throttle + steering
         right = throttle - steering
 
-        m = max(abs(left), abs(right), 1e-9)
-        if m > 1.0:
-            left /= m
-            right /= m
+        m = max(abs(left), abs(right), 1.0)
+        left /= m
+        right /= m
 
         left *= speed_limit
         right *= speed_limit
 
-        # Stiction compensation (so the slow wheel still moves -> the car actually turns)
-        left = _apply_min_pwm(left, MIN_PWM)
-        right = _apply_min_pwm(right, MIN_PWM)
-
-        if DEBUG_DRIVE:
-            print(f"[drive] thr={throttle:.2f} steer={steering:.2f} -> L={left:.2f} R={right:.2f}")
-
         self.set_motors(left, right)
+
 
 
 motors = MotorController()
@@ -581,22 +500,8 @@ def mjpeg_stream():
 # -----------------------------
 # Watchdog (deadman)
 # -----------------------------
-_manual_steer_f = 0.0
-_manual_throttle_f = 0.0
-
-
-def _ema(prev: float, x: float, alpha: float) -> float:
-    alpha = _clamp(alpha, 0.0, 1.0)
-    return prev + (x - prev) * alpha
-
-
 def _watchdog_loop() -> None:
-    global _last_control_ts, _manual_steer_f, _manual_throttle_f
-
-    try:
-        motors.stop()
-    except Exception:
-        pass
+    global _last_control_ts
 
     while True:
         time.sleep(0.05)
@@ -611,18 +516,16 @@ def _watchdog_loop() -> None:
         if mode != "manual":
             continue
 
-        if last <= 0.0 or (time.time() - last) > CONTROL_TIMEOUT_S:
+        if last > 0.0 and (time.time() - last) > CONTROL_TIMEOUT_S:
             motors.stop()
-            _manual_steer_f = 0.0
-            _manual_throttle_f = 0.0
             with state_lock:
                 state["throttle"] = 0.0
                 state["steering"] = 0.0
+            _last_control_ts = 0.0
             continue
 
-        _manual_steer_f = _ema(_manual_steer_f, steering, MANUAL_STEER_SMOOTH)
-        _manual_throttle_f = _ema(_manual_throttle_f, throttle, MANUAL_THROTTLE_SMOOTH)
-        motors.drive(_manual_throttle_f, _manual_steer_f, speed_limit)
+        motors.drive(throttle, steering, speed_limit)
+
 
 
 threading.Thread(target=_watchdog_loop, daemon=True).start()
@@ -672,7 +575,7 @@ def control():
 
 @app.route("/set_mode", methods=["POST"])
 def set_mode():
-    global _last_control_ts, _manual_steer_f, _manual_throttle_f
+    global _last_control_ts
     data = request.get_json(force=True, silent=True) or {}
     mode = data.get("mode", "manual")
     mode = "autonomous" if mode == "autonomous" else "manual"
@@ -683,8 +586,6 @@ def set_mode():
             state["steering"] = 0.0
             state["throttle"] = 0.0
 
-    _manual_steer_f = 0.0
-    _manual_throttle_f = 0.0
     _last_control_ts = 0.0
 
     motors.stop()
