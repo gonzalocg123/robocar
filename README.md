@@ -4,20 +4,27 @@ Aplicacion de control remoto y conduccion autonoma para un robocar basado en Ras
 El proyecto implementa una arquitectura tipo "behavioral cloning" (estilo DonkeyCar): primero se recolectan datos conduciendo en modo manual y despues se entrena un modelo que predice direccion (`steering`) desde imagenes.
 
 ## Tabla de contenidos
-1. [Resumen](#resumen)
-2. [Caracteristicas](#caracteristicas)
-3. [Arquitectura](#arquitectura)
-4. [Requisitos](#requisitos)
-5. [Instalacion en Raspberry Pi 5](#instalacion-en-raspberry-pi-5)
-6. [Uso diario](#uso-diario)
-7. [Cableado L298N (GPIO BCM)](#cableado-l298n-gpio-bcm)
-8. [Configuracion por variables de entorno](#configuracion-por-variables-de-entorno)
-9. [API HTTP](#api-http)
-10. [Dataset y entrenamiento](#dataset-y-entrenamiento)
-11. [Estructura del proyecto](#estructura-del-proyecto)
-12. [Seguridad operativa](#seguridad-operativa)
-13. [Troubleshooting](#troubleshooting)
-14. [Estado del proyecto](#estado-del-proyecto)
+- [Robocar RP5](#robocar-rp5)
+  - [Tabla de contenidos](#tabla-de-contenidos)
+  - [Resumen](#resumen)
+  - [Caracteristicas](#caracteristicas)
+  - [Arquitectura](#arquitectura)
+  - [Requisitos](#requisitos)
+  - [Instalacion en Raspberry Pi 5](#instalacion-en-raspberry-pi-5)
+  - [Uso diario](#uso-diario)
+  - [Cableado L298N (GPIO BCM)](#cableado-l298n-gpio-bcm)
+  - [Configuracion por variables de entorno](#configuracion-por-variables-de-entorno)
+  - [API HTTP](#api-http)
+    - [`GET /`](#get-)
+    - [`GET /video_feed`](#get-video_feed)
+    - [`GET /status`](#get-status)
+    - [`POST /control`](#post-control)
+    - [`POST /set_mode`](#post-set_mode)
+    - [`POST /toggle_recording`](#post-toggle_recording)
+  - [Dataset y entrenamiento](#dataset-y-entrenamiento)
+  - [Estructura del proyecto](#estructura-del-proyecto)
+  - [Seguridad operativa](#seguridad-operativa)
+  - [Troubleshooting](#troubleshooting)
 
 ## Resumen
 - Backend en Flask para control, streaming y grabacion de sesiones.
@@ -312,7 +319,3 @@ Paradas frecuentes en manual:
 - El watchdog corta si no recibe `/control` dentro de `CONTROL_TIMEOUT_S`.
 - Revisar conectividad WiFi y latencia del dispositivo de control.
 
-## Estado del proyecto
-
-Proyecto funcional para prototipado y experimentacion educativa con robocar.
-No incluye licencia explicita en este repositorio; agrega una licencia antes de uso comercial o distribucion externa.
