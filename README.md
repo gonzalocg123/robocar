@@ -17,7 +17,7 @@ Además incluye un **modo autónomo** que usa un modelo **TFLite** para predecir
 - **Motor Izquierdo**: IN1 (GPIO 17), IN2 (GPIO 27), ENA (GPIO 18 - PWM)
 - **Motor Derecho**: IN3 (GPIO 22), IN4 (GPIO 23), ENB (GPIO 25 - PWM)
 
-✅ IMPORTANTE:
+IMPORTANTE:
 - Alimenta **motores** con batería/fuente aparte.
 - Une **GND batería** con **GND Raspberry** (masa común).
 
